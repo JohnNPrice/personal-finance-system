@@ -1,0 +1,13 @@
+services:
+  mongo: 
+    image: mongo:8.2
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: paolo
+      MONGO_INITDB_ROOT_PASSWORD: paolo
+    ports:
+      - 27017:27017
+    volumes:
+      - mongo_pfs_db_volume:/data/db
+volumes:
+  mongo_pfs_db_volume:
+    driver: local
