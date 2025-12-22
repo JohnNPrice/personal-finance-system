@@ -1,13 +1,16 @@
 services:
-  mongo: 
+  mongo:
     image: mongo:8.2
+    container_name: mongo
     environment:
       MONGO_INITDB_ROOT_USERNAME: paolo
       MONGO_INITDB_ROOT_PASSWORD: paolo
     ports:
-      - 27017:27017
+      - "27017:27017"
     volumes:
       - mongo_pfs_db_volume:/data/db
+      - ./mongo_dump:/dump
+      - ./mongo-restore.sh:/docker-entrypoint-initdb.d/mongo-restore.sh:ro
+
 volumes:
   mongo_pfs_db_volume:
-    driver: local
