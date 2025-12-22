@@ -6,7 +6,7 @@ services:
       MONGO_INITDB_ROOT_USERNAME: paolo
       MONGO_INITDB_ROOT_PASSWORD: paolo
     ports:
-      - "27017:27017"
+      - "27018:27017"
     volumes:
       - mongo_pfs_db_volume:/data/db
       - ./mongo_dump:/dump
