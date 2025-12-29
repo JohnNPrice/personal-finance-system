@@ -1,0 +1,15 @@
+services:
+  backend:
+    build: ./backend
+    container_name: backend
+    ports:
+      - "3000:3000"
+    environment:
+      PORT: 3000
+      MONGO_URI: mongodb://admin:12345@mongo1:27017,mongo2:27017,mongo3:27017/demo?replicaSet=rs0&authSource=admin
+    networks:
+      - pis-net
+
+networks:
+  pis-net:
+    external: true

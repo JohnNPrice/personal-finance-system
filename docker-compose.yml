@@ -1,27 +1,87 @@
 services:
-  mongo:
+  mongo-keygen:
     image: mongo:8.2
-    container_name: mongo
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: paolo
-      MONGO_INITDB_ROOT_PASSWORD: paolo
-    ports:
-      - "27018:27017"
+    container_name: mongo-keygen
+    user: "0"
+    command: >
+      bash -c "
+        if [ ! -f /keyfile/mongo-keyfile ]; then
+          openssl rand -base64 756 > /keyfile/mongo-keyfile &&
+          chown 999:999 /keyfile/mongo-keyfile &&
+          chmod 400 /keyfile/mongo-keyfile;
+        fi
+      "
     volumes:
-      - mongo_pfs_db_volume:/data/db
-      - ./mongo_dump:/dump
-      - ./mongo-restore.sh:/docker-entrypoint-initdb.d/mongo-restore.sh:ro
+      - mongo_keyfile:/keyfile
+    restart: "no"
+    networks:
+      - pis-net
 
-  backend:
-    build: ./backend
-    container_name: backend
-    ports:
-      - "3000:3000"
-    environment:
-      PORT: 3000
-      MONGO_URI: mongodb://paolo:paolo@mongo:27017/demo?authSource=admin
+  mongo1:
+    image: mongo:8.2
+    container_name: mongo1
     depends_on:
-      - mongo
+      - mongo-keygen
+    command:
+      - mongod
+      - --replSet
+      - rs0
+      - --auth
+      - --keyFile
+      - /etc/mongo-keyfile/mongo-keyfile
+      - --bind_ip_all
+    volumes:
+      - mongo1_data:/data/db
+      - mongo_keyfile:/etc/mongo-keyfile:ro
+    ports:
+      - "27019:27017"
+    networks:
+      - pis-net
+
+  mongo2:
+    image: mongo:8.2
+    container_name: mongo2
+    depends_on:
+      - mongo-keygen
+    command:
+      - mongod
+      - --replSet
+      - rs0
+      - --auth
+      - --keyFile
+      - /etc/mongo-keyfile/mongo-keyfile
+      - --bind_ip_all
+    volumes:
+      - mongo2_data:/data/db
+      - mongo_keyfile:/etc/mongo-keyfile:ro
+    networks:
+      - pis-net
+
+  mongo3:
+    image: mongo:8.2
+    container_name: mongo3
+    depends_on:
+      - mongo-keygen
+    command:
+      - mongod
+      - --replSet
+      - rs0
+      - --auth
+      - --keyFile
+      - /etc/mongo-keyfile/mongo-keyfile
+      - --bind_ip_all
+    volumes:
+      - mongo3_data:/data/db
+      - mongo_keyfile:/etc/mongo-keyfile:ro
+    networks:
+      - pis-net
 
 volumes:
-  mongo_pfs_db_volume:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
+  mongo_keyfile:
+
+networks:
+  pis-net:
+    name: pis-net

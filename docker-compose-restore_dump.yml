@@ -1,0 +1,18 @@
+services:
+  mongo-restore:
+    image: mongo:8.2
+    container_name: mongo-restore
+    command: >
+      mongorestore
+      --uri="mongodb://admin:12345@mongo1:27017,mongo2:27017,mongo3:27017/?replicaSet=rs0&authSource=admin"
+      --nsInclude=pis.*
+      /dump
+    volumes:
+      - ./mongo_dump:/dump:ro
+    networks:
+      - pis-net
+    restart: "no"
+
+networks:
+  pis-net:
+    external: true
