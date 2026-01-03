@@ -7,8 +7,25 @@
 </head>
 <body>
 
+  <div id="authCheck" style="display: none;">
+    <div class="container" style="text-align: center; padding: 100px 20px;">
+      <h2>Checking authentication...</h2>
+    </div>
+  </div>
+
+  <div id="appContent" style="display: none;">
+
   <div class="container">
     <h1>Personal Finance Suite</h1>
+
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <div id="userInfo" style="font-size: 14px; color: #666;">
+        Loading user info...
+      </div>
+      <button id="logoutBtn" style="background-color: #dc3545; font-size: 14px;">
+        Logout
+      </button>
+    </div>
 
     <!-- Add Expense Form -->
     <form id="expenseForm" class="card">
@@ -50,5 +67,8 @@
   </div>
 
   <script src="app.js"></script>
+
+  </div>
+
 </body>
 </html>
