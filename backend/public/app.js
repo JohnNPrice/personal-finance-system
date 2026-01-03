@@ -4,9 +4,20 @@ const API = "/api";
 const form = document.getElementById("expenseForm");
 const list = document.getElementById("expensesList");
 
+document.getElementById("logoutBtn")?.addEventListener("click", async () => {
+  await fetch("/api/logout", { method: "POST" });
+  window.location.href = "/login.html";
+});
+
 // display all expenses
 async function loadExpenses() {
   const res = await fetch(`${API}/expenses`);
+
+  if (res.status === 401) {
+    window.location.href = "/login.html";
+    return;
+  }
+
   const expenses = await res.json();
 
   list.innerHTML = "";
