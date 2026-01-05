@@ -9,13 +9,13 @@ app.use(express.json());
 
 // Session middleware
 app.use(session({
-  secret: 'finance-system-secret-key-2024', // Change this in production!
+  secret: 'finance-system-secret-key-2024', // key
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false, // Set to true if using HTTPS
+    secure: false,
     httpOnly: true,
-    maxAge: 1000 * 60 * 60 * 24 // 24 hours
+    maxAge: 1000 * 60 * 60 * 24
   }
 }));
 
@@ -34,10 +34,10 @@ async function connectMongo() {
   
   db = client.db();
   expensesCol = db.collection("expenses");
-  budgetsCol = db.collection("budgets");
+  budgetsCol = db.collection("budget");
   usersCol = db.collection("users");
 
-  // Indexes for better performance
+  // indexes
   await expensesCol.createIndex({ user_id: 1, date: -1 });
   await expensesCol.createIndex({ user_id: 1, category: 1 });
   await budgetsCol.createIndex({ user_id: 1, budget_category: 1 });
@@ -85,17 +85,16 @@ app.post("/api/login", async (req, res) => {
       return res.status(401).json({ error: "Invalid credentials" });
     }
     
-    // Check password (support both plain text and bcrypt)
+    // Check password
     let passwordValid = false;
     
     if (user.user_password && user.user_password.startsWith('$2b$')) {
       // Password is hashed with bcrypt
       passwordValid = await bcrypt.compare(password, user.user_password);
     } else {
-      // Password is plain text
+
       passwordValid = (password === user.user_password);
       
-      // Hash and update password on successful login
       if (passwordValid) {
         const hashedPassword = await bcrypt.hash(password, 10);
         await usersCol.updateOne(
@@ -158,7 +157,7 @@ app.post("/api/register", async (req, res) => {
     return res.status(400).json({ error: "Username must be at least 3 characters" });
   }
   
-  // Check for alphanumeric username (simplified)
+  // Check for alphanumeric username
   const usernameRegex = /^[a-zA-Z0-9_]+$/;
   if (!usernameRegex.test(username)) {
     return res.status(400).json({ 
@@ -176,7 +175,7 @@ app.post("/api/register", async (req, res) => {
     // Hash the password
     const hashedPassword = await bcrypt.hash(password, 10);
     
-    // Create user document (simplified, no TOS field)
+    // Create user document
     const newUser = {
       user_name: username,
       user_password: hashedPassword,
@@ -282,11 +281,10 @@ app.get("/api/check-auth", (req, res) => {
 // GET all expenses for current user
 app.get("/api/expenses", requireAuth, async (req, res) => {
   try {
-    // Convert string ID to ObjectId
     const userId = new ObjectId(req.session.userId);
     
     const docs = await expensesCol
-      .find({ user_id: userId })  // Now comparing ObjectId to ObjectId
+      .find({ user_id: userId })
       .sort({ date: -1 })
       .limit(200)
       .toArray();
@@ -297,7 +295,7 @@ app.get("/api/expenses", requireAuth, async (req, res) => {
       _id: d._id.toString(),
       amount: d.amount?.toString?.() ?? d.amount,
       date: d.date ? new Date(d.date).toISOString() : null,
-      user_id: d.user_id?.toString?.() // Convert user_id to string too if needed
+      user_id: d.user_id?.toString?.()
     }));
     
     res.json(mapped);
@@ -321,7 +319,7 @@ app.post("/api/expenses", requireAuth, async (req, res) => {
     category: category || "Uncategorized",
     vendor: vendor || "",
     note: note || "",
-    user_id: new ObjectId(req.session.userId),  // Store as ObjectId, not string
+    user_id: new ObjectId(req.session.userId),
     created_at: new Date()
   };
   
@@ -334,13 +332,12 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
   const { id } = req.params;
   
   try {
-    // Convert string IDs to ObjectId
     const expenseId = new ObjectId(id);
     const userId = new ObjectId(req.session.userId);
     
     const expense = await expensesCol.findOne({ 
       _id: expenseId,
-      user_id: userId  // Now comparing ObjectId to ObjectId
+      user_id: userId 
     });
     
     if (!expense) {
@@ -359,76 +356,192 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
   }
 });
 
-// GET budgets for current user
+
+// GET budgets
 app.get("/api/budgets", requireAuth, async (req, res) => {
-  const userId = new ObjectId(req.session.userId);
-  
-  const docs = await budgetsCol
-    .find({ user_id: userId })
-    .toArray();
-  
-  const mapped = docs.map(d => ({
-    ...d,
-    _id: d._id.toString(),
-    budget_amount: d.budget_amount?.toString?.() ?? d.budget_amount,
-    user_id: d.user_id?.toString?.()
-  }));
-  
-  res.json(mapped);
+  try {
+    const userId = new ObjectId(req.session.userId);
+    
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+    const budgets = await budgetsCol
+      .find({ user_id: userId })
+      .toArray();
+    
+    const budgetsWithSpending = await Promise.all(
+      budgets.map(async (budget) => {
+        const spending = await expensesCol.aggregate([
+          {
+            $match: {
+              user_id: userId,
+              category: budget.budget_category,
+              date: { $gte: firstDay, $lte: lastDay }
+            }
+          },
+          {
+            $group: {
+              _id: null,
+              total: { $sum: { $toDouble: "$amount" } }
+            }
+          }
+        ]).toArray();
+        
+        const totalSpent = spending.length > 0 ? spending[0].total : 0;
+        const budgetAmount = parseFloat(budget.budget_amount.toString());
+        const remaining = budgetAmount - totalSpent;
+        const percentage = budgetAmount > 0 ? (totalSpent / budgetAmount) * 100 : 0;
+        
+        return {
+          ...budget,
+          _id: budget._id.toString(),
+          budget_amount: budgetAmount,
+          spent: totalSpent,
+          remaining: remaining,
+          percentage: percentage,
+          status: percentage > 100 ? "over" : percentage > 80 ? "warning" : "good"
+        };
+      })
+    );
+    
+    res.setHeader('Content-Type', 'application/json');
+    res.json(budgetsWithSpending);
+    
+  } catch (error) {
+    console.error("Error getting budgets with spending:", error);
+    res.status(500).json({ error: "Failed to get budgets" });
+  }
 });
 
-// POST set budget - FIXED
+// POST set/update budget
 app.post("/api/budgets", requireAuth, async (req, res) => {
   const { budget_category, budget_amount } = req.body;
   
+  console.log("POST /api/budgets called with:", { budget_category, budget_amount });
+  
   if (!budget_category || budget_amount === undefined || budget_amount === null) {
-    return res.status(400).json({ error: "budget_category and budget_amount are required" });
+    console.log("Validation failed: missing fields");
+    return res.status(400).json({ error: "Category and amount are required" });
   }
   
-  const userId = new ObjectId(req.session.userId);
+  if (budget_amount < 0) {
+    console.log("Validation failed: negative amount");
+    return res.status(400).json({ error: "Budget amount cannot be negative" });
+  }
   
-  await budgetsCol.updateOne(
-    { 
-      budget_category, 
-      user_id: userId
-    },
-    { 
-      $set: { 
-        budget_category, 
-        budget_amount: Decimal128.fromString(String(budget_amount)),
-        user_id: userId
-      } 
-    },
-    { upsert: true }
-  );
-  
-  res.json({ ok: true });
+  try {
+    const userId = new ObjectId(req.session.userId);
+    console.log("User ID:", userId.toString());
+    
+    const result = await budgetsCol.updateOne(
+      { 
+        user_id: userId,
+        budget_category: budget_category
+      },
+      { 
+        $set: { 
+          budget_category: budget_category,
+          budget_amount: Decimal128.fromString(String(budget_amount)),
+          user_id: userId,
+          updated_at: new Date()
+        } 
+      },
+      { upsert: true }
+    );
+    
+    console.log("MongoDB update result:", result);
+    
+    res.json({ 
+      ok: true, 
+      message: `Budget for ${budget_category} set to ${budget_amount}€`,
+      result: result
+    });
+    
+  } catch (error) {
+    console.error("Error setting budget:", error);
+    console.error("Error details:", error.message);
+    res.status(500).json({ 
+      error: "Failed to set budget",
+      details: error.message 
+    });
+  }
 });
 
-// POST set budget
-app.post("/api/budgets", requireAuth, async (req, res) => {
-  const { budget_category, budget_amount } = req.body;
+// DELETE budget by category
+app.delete("/api/budgets/:category", requireAuth, async (req, res) => {
+  const { category } = req.params;
   
-  if (!budget_category || budget_amount === undefined || budget_amount === null) {
-    return res.status(400).json({ error: "budget_category and budget_amount are required" });
+  try {
+    const userId = new ObjectId(req.session.userId);
+    
+    const result = await budgetsCol.deleteOne({
+      user_id: userId,
+      budget_category: category
+    });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: "Budget not found" });
+    }
+    
+    res.json({ 
+      ok: true, 
+      message: `Budget for ${category} deleted` 
+    });
+    
+  } catch (error) {
+    console.error("Error deleting budget:", error);
+    res.status(500).json({ error: "Failed to delete budget" });
   }
-  
-  await budgetsCol.updateOne(
-    { 
-      budget_category, 
-      user_id: req.session.userId 
-    },
-    { 
-      $set: { 
-        budget_category, 
-        budget_amount: Decimal128.fromString(String(budget_amount)),
-        user_id: req.session.userId
-      } 
-    },
-    { upsert: true }
-  );
-  
-  res.json({ ok: true });
+});
+
+// GET budget summary
+app.get("/api/budgets/summary", requireAuth, async (req, res) => {
+  try {
+    const userId = new ObjectId(req.session.userId);
+    
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    
+    const budgets = await budgetsCol
+      .find({ user_id: userId })
+      .toArray();
+    
+    let totalBudgeted = 0;
+    budgets.forEach(budget => {
+      totalBudgeted += parseFloat(budget.budget_amount.toString());
+    });
+    
+    const spending = await expensesCol.aggregate([
+      {
+        $match: {
+          user_id: userId,
+          date: { $gte: firstDay, $lte: lastDay }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          total: { $sum: { $toDouble: "$amount" } }
+        }
+      }
+    ]).toArray();
+    
+    const totalSpent = spending.length > 0 ? spending[0].total : 0;
+    
+    res.json({
+      total_budgeted: totalBudgeted,
+      total_spent: totalSpent,
+      total_remaining: totalBudgeted - totalSpent,
+      month: now.getMonth() + 1,
+      year: now.getFullYear()
+    });
+    
+  } catch (error) {
+    console.error("Error getting budget summary:", error);
+    res.status(500).json({ error: "Failed to get budget summary" });
+  }
 });
 
 

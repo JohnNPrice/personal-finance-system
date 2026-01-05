@@ -59,6 +59,53 @@
       <button type="submit">Add Expense</button>
     </form>
 
+    <!-- Budget List -->
+    <div class="card" id="budgetSection">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+        <h2 style="margin: 0;">Monthly Budgets</h2>
+        <div id="budgetPeriod" class="budget-period"></div>
+        <button id="addBudgetBtn">+ Add Budget</button>
+      </div>
+      
+      <!-- Add Budget Form -->
+      <div id="budgetFormContainer" style="display: none; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">
+        <h3 style="margin-top: 0;">Set Budget</h3>
+
+        <input type="hidden" id="budgetEditMode" value="false" />
+        <input type="hidden" id="budgetOriginalCategory" value="" />
+
+        <div style="display: flex; gap: 10px; align-items: flex-end;">
+          <div style="flex: 1;">
+            <label style="font-size: 12px; color: #555;">Category</label>
+            <input type="text" id="budgetCategory" placeholder="e.g. Food, Rent, Transportation" 
+                  style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" />
+          </div>
+          <div style="flex: 1;">
+            <label style="font-size: 12px; color: #555;">Monthly Amount (€)</label>
+            <input type="number" id="budgetAmount" step="0.01" min="0" 
+                  style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" />
+          </div>
+          <div>
+            <button id="saveBudgetBtn" style="padding: 8px 16px;">Save</button>
+            <button id="cancelBudgetBtn" style="padding: 8px 16px; background: #6c757d;">Cancel</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Budgets List -->
+      <div id="budgetsList"></div>
+      
+      <!-- Budget Summary -->
+      <div id="budgetSummary" style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee; display: none;">
+        <h3 style="margin-top: 0;">Budget Summary</h3>
+        <div style="display: flex; justify-content: space-between; font-size: 14px;">
+          <div>Total Budgeted: <span id="totalBudgeted">0</span>€</div>
+          <div>Total Spent: <span id="totalSpent">0</span>€</div>
+          <div>Total Remaining: <span id="totalRemaining">0</span>€</div>
+        </div>
+      </div>
+    </div>
+
     <!-- Expense List -->
     <div class="card">
       <h2>Expenses</h2>
