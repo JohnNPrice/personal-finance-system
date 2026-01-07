@@ -1,21 +1,115 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Login</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>Login - Personal Finance Suite</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .login-container {
+      max-width: 400px;
+      margin: 100px auto;
+      padding: 30px;
+    }
+    
+    .login-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .error-message {
+      color: #dc3545;
+      background: #f8d7da;
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      display: none;
+    }
+    
+    .login-footer {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
 </head>
 <body>
-
-  <div class="card">
-    <h2>Login</h2>
-
-    <input id="username" placeholder="Username">
-    <input id="password" type="password" placeholder="Password">
-    <button id="loginBtn">Login</button>
-
-    <p id="msg"></p>
+  <div class="container login-container">
+    <div class="login-header">
+      <h1>Personal Finance Suite</h1>
+      <p>Sign in to manage your expenses</p>
+    </div>
+    
+    <div id="errorMessage" class="error-message"></div>
+    
+    <form id="loginForm" class="card">
+      <h2>Login</h2>
+      
+      <label>
+        Username
+        <input type="text" id="username" required />
+      </label>
+      
+      <label>
+        Password
+        <input type="password" id="password" required />
+      </label>
+      
+      <button type="submit" style="width: 100%;">Sign In</button>
+      
+      <div class="login-footer">
+        <p>Demo credentials: paolo / qwerty</p>
+        <p style="margin-top: 10px;">
+            Don't have an account? <a href="/register.html">Register here</a>
+        </p>
+      </div>
+    </form>
   </div>
-
-  <script src="login.js"></script>
+  
+  <script>
+    const API = "/api";
+    const form = document.getElementById("loginForm");
+    const errorEl = document.getElementById("errorMessage");
+    
+    // Check if already logged in
+    const currentUser = localStorage.getItem('finance_user');
+    if (currentUser) {
+      // Redirect to main app
+      window.location.href = '/';
+    }
+    
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+      
+      errorEl.style.display = 'none';
+      
+      try {
+        const response = await fetch(`${API}/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || "Login failed");
+        }
+        
+        // Store user in localStorage
+        localStorage.setItem('finance_user', JSON.stringify(data));
+        
+        // Redirect to main app
+        window.location.href = '/';
+        
+      } catch (error) {
+        errorEl.textContent = error.message;
+        errorEl.style.display = 'block';
+      }
+    });
+  </script>
 </body>
 </html>

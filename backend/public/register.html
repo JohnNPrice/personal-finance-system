@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Register - Personal Finance Suite</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .register-container {
+      max-width: 400px;
+      margin: 80px auto;
+      padding: 30px;
+    }
+    
+    .register-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    
+    .message {
+      padding: 10px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      display: none;
+    }
+    
+    .success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .form-footer {
+      text-align: center;
+      margin-top: 25px;
+      font-size: 14px;
+      color: #666;
+    }
+    
+    .form-footer a {
+      color: #007bff;
+      text-decoration: none;
+    }
+    
+    .form-footer a:hover {
+      text-decoration: underline;
+    }
+    
+    .password-match {
+      font-size: 12px;
+      margin-top: 3px;
+    }
+    
+    .valid { color: #28a745; }
+    .invalid { color: #dc3545; }
+  </style>
+</head>
+<body>
+  <div class="container register-container">
+    <div class="register-header">
+      <h1>Personal Finance Suite</h1>
+      <p>Create your account</p>
+    </div>
+    
+    <div id="message" class="message"></div>
+    
+    <form id="registerForm" class="card">
+      <h2>Register</h2>
+      
+      <label>
+        Username
+        <input type="text" id="username" required 
+               placeholder="Choose a username"
+               minlength="3" maxlength="20" />
+        <div id="usernameFeedback" style="font-size: 12px; margin-top: 3px;"></div>
+      </label>
+      
+      <label>
+        Password
+        <input type="password" id="password" required 
+               placeholder="At least 6 characters"
+               minlength="6" />
+      </label>
+      
+      <label>
+        Confirm Password
+        <input type="password" id="confirmPassword" required 
+               placeholder="Re-enter your password" />
+        <div id="confirmFeedback" class="password-match"></div>
+      </label>
+      
+      <button type="submit" id="submitBtn" style="width: 100%; margin-top: 10px;">
+        Create Account
+      </button>
+      
+      <div class="form-footer">
+        <p>Already have an account? <a href="/login.html">Sign in here</a></p>
+        <p style="margin-top: 10px;">
+          <a href="/login.html">← Back to Login</a>
+        </p>
+      </div>
+    </form>
+  </div>
+  
+  <script>
+    const API = "/api";
+    const form = document.getElementById("registerForm");
+    const messageEl = document.getElementById("message");
+    const submitBtn = document.getElementById("submitBtn");
+    
+    // Check if already logged in
+    const currentUser = localStorage.getItem('finance_user');
+    if (currentUser) {
+      window.location.href = '/';
+    }
+    
+    // Username availability check
+    const usernameInput = document.getElementById("username");
+    let usernameAvailable = false;
+    let usernameTimeout;
+    
+    usernameInput.addEventListener('input', function() {
+      const username = this.value.trim();
+      const feedback = document.getElementById("usernameFeedback");
+      
+      if (username.length < 3) {
+        feedback.textContent = "Username must be at least 3 characters";
+        feedback.className = "invalid";
+        usernameAvailable = false;
+        return;
+      }
+      
+      // Check for valid characters (alphanumeric and underscores only)
+      const validChars = /^[a-zA-Z0-9_]+$/;
+      if (!validChars.test(username)) {
+        feedback.textContent = "Only letters, numbers, and underscores allowed";
+        feedback.className = "invalid";
+        usernameAvailable = false;
+        return;
+      }
+      
+      // Show checking message
+      feedback.textContent = "Checking availability...";
+      feedback.className = "";
+      
+      // Debounce the API call
+      clearTimeout(usernameTimeout);
+      usernameTimeout = setTimeout(async () => {
+        try {
+          const response = await fetch(`${API}/check-username/${encodeURIComponent(username)}`);
+          const data = await response.json();
+          
+          if (data.available) {
+            feedback.textContent = "✓ Username available";
+            feedback.className = "valid";
+            usernameAvailable = true;
+          } else {
+            feedback.textContent = "✗ Username already taken";
+            feedback.className = "invalid";
+            usernameAvailable = false;
+          }
+        } catch (error) {
+          feedback.textContent = "Error checking username";
+          feedback.className = "invalid";
+          usernameAvailable = false;
+        }
+      }, 500);
+    });
+    
+    // Password confirmation check
+    const passwordInput = document.getElementById("password");
+    const confirmInput = document.getElementById("confirmPassword");
+    
+    function checkPasswordMatch() {
+      const password = passwordInput.value;
+      const confirm = confirmInput.value;
+      const feedback = document.getElementById("confirmFeedback");
+      
+      if (confirm.length === 0) {
+        feedback.textContent = "";
+        feedback.className = "";
+        return;
+      }
+      
+      if (password === confirm) {
+        feedback.textContent = "✓ Passwords match";
+        feedback.className = "valid";
+      } else {
+        feedback.textContent = "✗ Passwords do not match";
+        feedback.className = "invalid";
+      }
+    }
+    
+    confirmInput.addEventListener('input', checkPasswordMatch);
+    passwordInput.addEventListener('input', checkPasswordMatch);
+    
+    // Form submission
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
+      const confirmPassword = confirmInput.value;
+      
+      // Clear previous messages
+      messageEl.style.display = 'none';
+      messageEl.className = 'message';
+      
+      // Validation
+      if (!usernameAvailable) {
+        showMessage("Please choose a valid username", "error");
+        usernameInput.focus();
+        return;
+      }
+      
+      if (password.length < 6) {
+        showMessage("Password must be at least 6 characters", "error");
+        passwordInput.focus();
+        return;
+      }
+      
+      if (password !== confirmPassword) {
+        showMessage("Passwords do not match", "error");
+        confirmInput.focus();
+        return;
+      }
+      
+      // Disable submit button
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Creating account...";
+      
+      try {
+        const response = await fetch(`${API}/register`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password, confirmPassword })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok) {
+          throw new Error(data.error || "Registration failed");
+        }
+        
+        // Registration successful
+        showMessage("Registration successful! Redirecting...", "success");
+        
+        // Auto-login
+        localStorage.setItem('finance_user', JSON.stringify({
+          _id: data._id,
+          username: data.username
+        }));
+        
+        // Redirect to main app after 1.5 seconds
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 1500);
+        
+      } catch (error) {
+        showMessage(error.message, "error");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Create Account";
+      }
+    });
+    
+    function showMessage(text, type) {
+      messageEl.textContent = text;
+      messageEl.className = `message ${type}`;
+      messageEl.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
