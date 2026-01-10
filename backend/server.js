@@ -26,7 +26,7 @@ const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI;
 
 // Connect to Mongo
-let db, expensesCol, budgetsCol, usersCol;
+let db, expensesCol, budgetsCol, usersCol, budgetCacheCol;;
 
 async function connectMongo() {
   const client = new MongoClient(MONGO_URI);
@@ -36,11 +36,13 @@ async function connectMongo() {
   expensesCol = db.collection("expenses");
   budgetsCol = db.collection("budget");
   usersCol = db.collection("users");
+  budgetCacheCol = db.collection("budget_cache");
 
   // indexes
   await expensesCol.createIndex({ user_id: 1, date: -1 });
   await expensesCol.createIndex({ user_id: 1, category: 1 });
   await budgetsCol.createIndex({ user_id: 1, budget_category: 1 });
+  await budgetCacheCol.createIndex({ user_id: 1, month: 1, category: 1 }, { unique: true });
 
   console.log("Connected to MongoDB");
 }
@@ -308,24 +310,95 @@ app.get("/api/expenses", requireAuth, async (req, res) => {
 // POST create expense
 app.post("/api/expenses", requireAuth, async (req, res) => {
   const { amount, date, category, vendor, note } = req.body;
-  
-  if (amount === undefined || amount === null || date === undefined) {
+
+  if (amount === undefined || date === undefined) {
     return res.status(400).json({ error: "amount and date are required" });
   }
-  
-  const doc = {
+
+  const userId = new ObjectId(req.session.userId);
+
+  const expenseDoc = {
     amount: Decimal128.fromString(String(amount)),
     date: new Date(date),
     category: category || "Uncategorized",
     vendor: vendor || "",
     note: note || "",
-    user_id: new ObjectId(req.session.userId),
+    user_id: userId,
     created_at: new Date()
   };
-  
-  const result = await expensesCol.insertOne(doc);
-  res.status(201).json({ _id: result.insertedId.toString() });
+
+  const monthKey =
+    `${expenseDoc.date.getFullYear()}-${String(expenseDoc.date.getMonth() + 1).padStart(2, "0")}`;
+
+  let alerts = [];
+
+  const session = db.client.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      // 1. Insert expense
+      await expensesCol.insertOne(expenseDoc, { session });
+
+      // 2. Check if this category has a budget
+      const budget = await budgetsCol.findOne(
+        { user_id: userId, budget_category: expenseDoc.category },
+        { session }
+      );
+
+      // If no budget = no cache update
+      if (!budget) return;
+
+      // 3. Update cache 
+      await budgetCacheCol.updateOne(
+        {
+          user_id: userId,
+          month: monthKey,
+          category: expenseDoc.category
+        },
+        {
+          $inc: { total: Number(amount) },
+          $set: { updated_at: new Date() }
+        },
+        { upsert: true, session }
+      );
+
+      
+      const cacheDoc = await budgetCacheCol.findOne(
+        {
+          user_id: userId,
+          month: monthKey,
+          category: expenseDoc.category
+        },
+        { session }
+      );
+
+      // 4. Check budget limit
+      const limit = Number(budget.budget_amount.toString());
+      const spent = cacheDoc.total;
+
+      if (spent > limit) {
+        alerts.push({
+          type: "category",
+          category: expenseDoc.category,
+          spent,
+          limit
+        });
+      }
+    });
+
+    res.status(201).json({
+      ok: true,
+      alerts
+    });
+
+  } catch (err) {
+    console.error("Expense insert failed:", err);
+    res.status(500).json({ error: "Failed to add expense" });
+  } finally {
+    await session.endSession();
+  }
 });
+
 
 // DELETE expense
 app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
@@ -343,7 +416,32 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
     if (!expense) {
       return res.status(404).json({ error: "Expense not found or not authorized" });
     }
-    
+
+    // Subtract from cache
+
+      // Check if this expense has a budget
+      const budget = await budgetsCol.findOne({
+        user_id: userId,
+        budget_category: expense.category
+      });
+
+      if (budget) {
+        const expenseDate = new Date(expense.date);
+        const monthKey = `${expenseDate.getFullYear()}-${String(expenseDate.getMonth() + 1).padStart(2, "0")}`;
+
+        await budgetCacheCol.updateOne(
+          {
+            user_id: userId,
+            category: expense.category,
+            month: monthKey
+          },
+          {
+            $inc: { total: -Number(expense.amount.toString()) },
+            $set: { updated_at: new Date() }
+          }
+        );
+      }
+
     await expensesCol.deleteOne({ 
       _id: expenseId,
       user_id: userId
@@ -372,23 +470,16 @@ app.get("/api/budgets", requireAuth, async (req, res) => {
     
     const budgetsWithSpending = await Promise.all(
       budgets.map(async (budget) => {
-        const spending = await expensesCol.aggregate([
-          {
-            $match: {
-              user_id: userId,
-              category: budget.budget_category,
-              date: { $gte: firstDay, $lte: lastDay }
-            }
-          },
-          {
-            $group: {
-              _id: null,
-              total: { $sum: { $toDouble: "$amount" } }
-            }
-          }
-        ]).toArray();
-        
-        const totalSpent = spending.length > 0 ? spending[0].total : 0;
+
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+        const cacheDoc = await budgetCacheCol.findOne({
+          user_id: userId,
+          month: monthKey,
+          category: budget.budget_category
+        });
+
+        const totalSpent = cacheDoc?.total || 0;
         const budgetAmount = parseFloat(budget.budget_amount.toString());
         const remaining = budgetAmount - totalSpent;
         const percentage = budgetAmount > 0 ? (totalSpent / budgetAmount) * 100 : 0;
@@ -449,6 +540,50 @@ app.post("/api/budgets", requireAuth, async (req, res) => {
       },
       { upsert: true }
     );
+
+          //  Sum up everything in expenses for the categories
+
+      const now = new Date();
+      const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+      const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+
+      // Sum existing expenses for this category & month
+      const spendingAgg = await expensesCol.aggregate([
+        {
+          $match: {
+            user_id: userId,
+            category: budget_category,
+            date: { $gte: firstDay, $lte: lastDay }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: { $toDouble: "$amount" } }
+          }
+        }
+      ]).toArray();
+
+      const totalSpent = spendingAgg.length > 0 ? spendingAgg[0].total : 0;
+
+      // Upsert cache document
+      await budgetCacheCol.updateOne(
+        {
+          user_id: userId,
+          category: budget_category,
+          month: monthKey
+        },
+        {
+          $set: {
+            total: totalSpent,
+            updated_at: new Date()
+          }
+        },
+        { upsert: true }
+      );
+
     
     console.log("MongoDB update result:", result);
     
@@ -478,6 +613,15 @@ app.delete("/api/budgets/:category", requireAuth, async (req, res) => {
     const result = await budgetsCol.deleteOne({
       user_id: userId,
       budget_category: category
+    });
+
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    await budgetCacheCol.deleteOne({
+      user_id: userId,
+      category: category,
+      month: monthKey
     });
     
     if (result.deletedCount === 0) {
@@ -513,22 +657,25 @@ app.get("/api/budgets/summary", requireAuth, async (req, res) => {
       totalBudgeted += parseFloat(budget.budget_amount.toString());
     });
     
-    const spending = await expensesCol.aggregate([
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const cacheTotals = await budgetCacheCol.aggregate([
       {
         $match: {
           user_id: userId,
-          date: { $gte: firstDay, $lte: lastDay }
+          month: monthKey
         }
       },
       {
         $group: {
           _id: null,
-          total: { $sum: { $toDouble: "$amount" } }
+          total: { $sum: "$total" }
         }
       }
     ]).toArray();
-    
-    const totalSpent = spending.length > 0 ? spending[0].total : 0;
+
+    const totalSpent = cacheTotals.length > 0 ? cacheTotals[0].total : 0;
+
     
     res.json({
       total_budgeted: totalBudgeted,

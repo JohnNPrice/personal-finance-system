@@ -29,6 +29,7 @@ async function loadExpenses() {
       li.querySelector("button").addEventListener("click", async () => {
         await fetch(`${API}/expenses/${e._id}`, { method: "DELETE" });
         loadExpenses();
+        loadBudgets();
       });
       list.appendChild(li);
     });
