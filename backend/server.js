@@ -3,6 +3,7 @@ const path = require("path");
 const { MongoClient, ObjectId, Decimal128 } = require("mongodb");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
+const cron = require("node-cron");
 
 const app = express();
 app.use(express.json());
@@ -55,6 +56,71 @@ function requireAuth(req, res, next) {
   }
   next();
 }
+
+// Monthly reports generation function
+async function generateMonthlyReportForUser(userId) {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+  const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+
+  // Pull cache
+  const cacheRows = await budgetCacheCol.find({
+    user_id: userId,
+    month: monthKey
+  }).toArray();
+
+  if (cacheRows.length === 0) return null;
+
+  // Pull budgets
+  const budgets = await budgetsCol.find({ user_id: userId }).toArray();
+
+  const budgetMap = {};
+  budgets.forEach(b => {
+    budgetMap[b.budget_category] = Number(b.budget_amount.toString());
+  });
+
+  let totalSpent = 0;
+  let totalBudgeted = 0;
+  let totalOverspent = 0;
+
+  const categories = cacheRows.map(row => {
+    const spent = row.total;
+    const budgeted = budgetMap[row.category] || 0;
+    const overspent = Math.max(0, spent - budgeted);
+
+    totalSpent += spent;
+    totalBudgeted += budgeted;
+    totalOverspent += overspent;
+
+    return {
+      category: row.category,
+      budgeted,
+      spent,
+      overspent
+    };
+  });
+
+  const report = {
+    user_id: userId,
+    year,
+    month,
+    total_budgeted: totalBudgeted,
+    total_spent: totalSpent,
+    total_overspent: totalOverspent,
+    categories,
+    generated_at: new Date()
+  };
+
+  await reportsCol.insertOne(report);
+
+  console.log(
+    `Report generated for user ${userId.toString()} (${year}-${month})`
+  );
+
+  return report;
+}
+
 
 // Health check
 app.get("/api/health", (req, res) => res.json({ ok: true }));
@@ -309,80 +375,31 @@ app.get("/api/expenses", requireAuth, async (req, res) => {
 });
 
 // POST reports
-app.post("/api/reports/debug-generate",  requireAuth, async (req, res) => {
-  try {
-    console.log("DEBUG REPORT ROUTE HIT");
-    // TEMP: assume logged-in user later
-    const userId = new ObjectId(req.session?.userId);
+app.post(
+  "/api/reports/debug-generate",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = new ObjectId(req.session.userId);
 
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+      const report = await generateMonthlyReportForUser(userId);
 
-    // 1. Pull from cache
-    const cacheRows = await budgetCacheCol.find({
-      user_id: userId,
-      month: monthKey
-    }).toArray();
+      if (!report) {
+        return res.json({ ok: true, message: "No data to report" });
+      }
 
-    // 2. Pull budgets
-    const budgets = await budgetsCol.find({
-      user_id: userId
-    }).toArray();
-
-    // Build budget lookup
-    const budgetMap = {};
-    budgets.forEach(b => {
-      budgetMap[b.budget_category] = Number(b.budget_amount.toString());
-    });
-
-    // 3. Aggregate
-    let totalSpent = 0;
-    let totalBudgeted = 0;
-    let totalOverspent = 0;
-
-    const categories = cacheRows.map(row => {
-      const spent = row.total;
-      const budgeted = budgetMap[row.category] || 0;
-      const overspent = Math.max(0, spent - budgeted);
-
-      totalSpent += spent;
-      totalBudgeted += budgeted;
-      totalOverspent += overspent;
-
-      return {
-        category: row.category,
-        budgeted,
-        spent,
-        overspent
-      };
-    });
-
-    // 4. Save report
-      const result = await reportsCol.insertOne({
-        user_id: userId,
-        year,
-        month,
-        total_budgeted: totalBudgeted,
-        total_spent: totalSpent,
-        total_overspent: totalOverspent,
-        categories,
-        generated_at: new Date()
+      res.json({
+        ok: true,
+        generated_at: report.generated_at
       });
 
-
-    res.json({
-      ok: true,
-      report_id: result.insertedId.toString(),
-      total_spent: totalSpent
-    });
-
-  } catch (err) {
-    console.error("REPORT ERROR:", err);
-    res.status(500).json({ error: err.message });
+    } catch (err) {
+      console.error("DEBUG REPORT ERROR:", err);
+      res.status(500).json({ error: "Failed to generate report" });
+    }
   }
-});
+);
+
 
 // GET reports
 app.get("/api/reports", requireAuth, async (req, res) => {
@@ -849,3 +866,41 @@ connectMongo()
     console.error("Mongo connection failed:", err);
     process.exit(1);
   });
+
+// Interval for reports
+ /* setInterval(async () => {
+  try {
+    console.log("Running scheduled report job");
+
+    const users = await budgetsCol.distinct("user_id");
+
+    for (const userId of users) {
+      await generateMonthlyReportForUser(userId);
+    }
+
+  } catch (err) {
+    console.error("SCHEDULED REPORT ERROR:", err);
+  }
+}, 30 * 1000); // 30 seconds
+*/
+
+// Monthly schedule
+//min h days(if anything from 28 to 31) month  day of the week
+// test value(every 30 seconds): */30 * * * * *
+// monthly value: 59 23 28-31 * *
+cron.schedule("59 23 28-31 * *", async () => {
+  try {
+    console.log("Monthly report job started");
+
+    const users = await budgetsCol.distinct("user_id");
+
+    for (const userId of users) {
+      await generateMonthlyReportForUser(userId);
+    }
+
+    console.log("Monthly report job finished");
+
+  } catch (err) {
+    console.error("MONTHLY REPORT ERROR:", err);
+  }
+});
