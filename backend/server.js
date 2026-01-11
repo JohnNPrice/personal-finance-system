@@ -49,6 +49,7 @@ async function connectMongo() {
   console.log("Connected to MongoDB");
 }
 
+
 // Authentication middleware
 function requireAuth(req, res, next) {
   if (!req.session.userId) {
