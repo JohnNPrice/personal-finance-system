@@ -4,11 +4,20 @@ const { MongoClient, ObjectId, Decimal128 } = require("mongodb");
 const session = require("express-session");
 const bcrypt = require("bcrypt");
 const cron = require("node-cron");
+const MongoStore = require("connect-mongo"); //NEW SESSION
 
 const app = express();
 app.use(express.json());
 
+//TESTING LOAD BALANCING
+app.use((req, res, next) => {
+  console.log("Handled by container:", require("os").hostname());
+  next();
+});
+
+
 // Session middleware
+/*
 app.use(session({
   secret: 'finance-system-secret-key-2024', // key
   resave: false,
@@ -19,12 +28,36 @@ app.use(session({
     maxAge: 1000 * 60 * 60 * 24
   }
 }));
+*/
+
+
+
+//NEW SESSION CODE
+const MONGO_URI = process.env.MONGO_URI;
+if (!MONGO_URI) throw new Error("MONGO_URI not set");
+
+app.use(session({
+  store: MongoStore.default.create({
+    mongoUrl: MONGO_URI,
+    collectionName: "sessions"
+  }),
+  secret: "finance-system-secret-key-2024",
+  resave: false,
+  saveUninitialized: false,
+    cookie: {
+    secure: false,
+    httpOnly: true,
+    maxAge: 1000 * 60 * 60 * 24
+  }
+}));
+// END OF NEW SESSION CODE
+
 
 // Serve static frontend
 app.use(express.static(path.join(__dirname, "public")));
 
 const PORT = process.env.PORT || 3000;
-const MONGO_URI = process.env.MONGO_URI;
+// const MONGO_URI = process.env.MONGO_URI;
 
 // Connect to Mongo
 let db, expensesCol, budgetsCol, usersCol, budgetCacheCol, reportsCol;
