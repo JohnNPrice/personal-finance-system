@@ -61,14 +61,19 @@
 
     <!-- Budget List -->
     <div class="card" id="budgetSection">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-        <h2 style="margin: 0;">Monthly Budgets</h2>
-        <div id="budgetPeriod" class="budget-period"></div>
-        <button id="addBudgetBtn">+ Add Budget</button>
-        <button id="generateReportBtn"> Generate Report (DEBUG) </button>
-        <!-- MAKE A DROP DOWN TO SELECT REPORTS TO EXPORT -->
-        <button onclick="exportReportCSV('69637dc985f33550ce0dac23')"> Export CSV </button>
+      <div class="budget-toolbar">
+        <div class="budget-toolbar-left">
+          <h2 class="budget-title">Monthly Budgets</h2>
+          <div id="budgetPeriod" class="budget-period-pill"></div>
+        </div>
+
+        <div class="budget-toolbar-actions">
+          <button id="addBudgetBtn" class="btn btn-secondary">+ Add Budget</button>
+          <button id="generateReportBtn" class="btn btn-primary">Generate Report</button>
+          <button id="exportLatestReportBtn" class="btn btn-outline">Export Latest CSV</button>
+        </div>
       </div>
+
       
       <!-- Add Budget Form -->
       <div id="budgetFormContainer" style="display: none; margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 4px;">

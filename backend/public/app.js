@@ -469,7 +469,7 @@ if (reportBtn) {
     const data = await res.json();
     console.log("Report response:", data);
 
-    alert("Report generated: " + data.report_id);
+    alert("Report generated!");
   });
 }
 
@@ -478,3 +478,31 @@ function exportReportCSV(reportId) {
   window.location.href = `/api/reports/${reportId}/export/csv`;
 }
 
+// Export Latest CSV button
+const exportLatestBtn = document.getElementById("exportLatestReportBtn");
+
+if (exportLatestBtn) {
+  exportLatestBtn.addEventListener("click", async () => {
+    try {
+      exportLatestBtn.disabled = true;
+
+      const res = await fetch("/api/reports");
+      if (!res.ok) throw new Error(`Failed to load reports (${res.status})`);
+
+      const reports = await res.json();
+
+      if (!Array.isArray(reports) || reports.length === 0) {
+        alert("No reports found yet. Generate a report first.");
+        return;
+      }
+
+      const latestReportId = reports[0]._id;
+      exportReportCSV(latestReportId);
+    } catch (err) {
+      console.error("Export latest report failed:", err);
+      alert("Could not export latest report.");
+    } finally {
+      exportLatestBtn.disabled = false;
+    }
+  });
+}
