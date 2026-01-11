@@ -26,7 +26,7 @@ const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGO_URI;
 
 // Connect to Mongo
-let db, expensesCol, budgetsCol, usersCol, budgetCacheCol;;
+let db, expensesCol, budgetsCol, usersCol, budgetCacheCol, reportsCol;
 
 async function connectMongo() {
   const client = new MongoClient(MONGO_URI);
@@ -37,6 +37,7 @@ async function connectMongo() {
   budgetsCol = db.collection("budget");
   usersCol = db.collection("users");
   budgetCacheCol = db.collection("budget_cache");
+  reportsCol = db.collection("reports");
 
   // indexes
   await expensesCol.createIndex({ user_id: 1, date: -1 });
@@ -306,6 +307,155 @@ app.get("/api/expenses", requireAuth, async (req, res) => {
     res.status(500).json({ error: "Failed to fetch expenses" });
   }
 });
+
+// POST reports
+app.post("/api/reports/debug-generate",  requireAuth, async (req, res) => {
+  try {
+    console.log("DEBUG REPORT ROUTE HIT");
+    // TEMP: assume logged-in user later
+    const userId = new ObjectId(req.session?.userId);
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+
+    // 1. Pull from cache
+    const cacheRows = await budgetCacheCol.find({
+      user_id: userId,
+      month: monthKey
+    }).toArray();
+
+    // 2. Pull budgets
+    const budgets = await budgetsCol.find({
+      user_id: userId
+    }).toArray();
+
+    // Build budget lookup
+    const budgetMap = {};
+    budgets.forEach(b => {
+      budgetMap[b.budget_category] = Number(b.budget_amount.toString());
+    });
+
+    // 3. Aggregate
+    let totalSpent = 0;
+    let totalBudgeted = 0;
+    let totalOverspent = 0;
+
+    const categories = cacheRows.map(row => {
+      const spent = row.total;
+      const budgeted = budgetMap[row.category] || 0;
+      const overspent = Math.max(0, spent - budgeted);
+
+      totalSpent += spent;
+      totalBudgeted += budgeted;
+      totalOverspent += overspent;
+
+      return {
+        category: row.category,
+        budgeted,
+        spent,
+        overspent
+      };
+    });
+
+    // 4. Save report
+      const result = await reportsCol.insertOne({
+        user_id: userId,
+        year,
+        month,
+        total_budgeted: totalBudgeted,
+        total_spent: totalSpent,
+        total_overspent: totalOverspent,
+        categories,
+        generated_at: new Date()
+      });
+
+
+    res.json({
+      ok: true,
+      report_id: result.insertedId.toString(),
+      total_spent: totalSpent
+    });
+
+  } catch (err) {
+    console.error("REPORT ERROR:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET reports
+app.get("/api/reports", requireAuth, async (req, res) => {
+  try {
+    const userId = new ObjectId(req.session.userId);
+
+    const reports = await reportsCol
+      .find({ user_id: userId })
+      .sort({ generated_at: -1 })
+      .limit(12)
+      .toArray();
+
+    res.json(
+      reports.map(r => ({
+        ...r,
+        _id: r._id.toString()
+      }))
+    );
+
+  } catch (err) {
+    console.error("GET REPORTS ERROR:", err);
+    res.status(500).json({ error: "Failed to fetch reports" });
+  }
+});
+
+// GET reports for exporting .csv
+app.get(
+  "/api/reports/:id/export/csv",
+  requireAuth,
+  async (req, res) => {
+    try {
+      const userId = new ObjectId(req.session.userId);
+      const reportId = new ObjectId(req.params.id);
+
+      const report = await reportsCol.findOne({
+        _id: reportId,
+        user_id: userId
+      });
+
+      if (!report) {
+        return res.status(404).json({ error: "Report not found" });
+      }
+
+      // CSV header
+      let csv = "Category,Budgeted,Spent,Overspent\n";
+
+      // Category rows
+      report.categories.forEach(cat => {
+        csv += `${cat.category},${cat.budgeted},${cat.spent},${cat.overspent}\n`;
+      });
+
+      // Totals
+      csv += "\n";
+      csv += `TOTAL,${report.total_budgeted},${report.total_spent},${report.total_overspent}\n`;
+
+      const filename = `budget-report-${report.year}-${String(report.month).padStart(2, "0")}.csv`;
+
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}"`
+      );
+
+      res.send(csv);
+
+    } catch (err) {
+      console.error("CSV EXPORT ERROR:", err);
+      res.status(500).json({ error: "Failed to export CSV" });
+    }
+  }
+);
+
+
 
 // POST create expense
 app.post("/api/expenses", requireAuth, async (req, res) => {

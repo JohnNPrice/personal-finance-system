@@ -454,3 +454,27 @@ if (cancelBudgetBtn) {
     });
   }
 });
+
+// Report button
+const reportBtn = document.getElementById("generateReportBtn");
+
+if (reportBtn) {
+  reportBtn.addEventListener("click", async () => {
+    console.log("Report button clicked");
+
+    const res = await fetch("/api/reports/debug-generate", {
+      method: "POST"
+    });
+
+    const data = await res.json();
+    console.log("Report response:", data);
+
+    alert("Report generated: " + data.report_id);
+  });
+}
+
+// Export CSV button
+function exportReportCSV(reportId) {
+  window.location.href = `/api/reports/${reportId}/export/csv`;
+}
+
