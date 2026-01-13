@@ -15,4 +15,4 @@ services:
 
 networks:
   pis-net:
-    external: true
+    name: pis-net

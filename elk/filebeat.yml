@@ -1,0 +1,29 @@
+filebeat.autodiscover:
+  providers:
+    - type: docker
+      hints.enabled: false
+      templates:
+        - config:
+            - type: container
+              paths:
+                - /var/lib/docker/containers/${data.docker.container.id}/*.log
+              processors:
+                - add_docker_metadata: {}
+                - drop_event:
+                    when:
+                      or:
+                        - equals:
+                            docker.container.name: "elasticsearch"
+                        - equals:
+                            docker.container.name: "kibana"
+                        - equals:
+                            docker.container.name: "logstash"
+                        - equals:
+                            docker.container.name: "filebeat"
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+processors:
+  - add_host_metadata: {}
+  - add_cloud_metadata: {}
