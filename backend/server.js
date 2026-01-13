@@ -15,6 +15,25 @@ app.use((req, res, next) => {
   next();
 });
 
+// Logging 
+function audit(req, action, details = {}) {
+  const entry = {
+    ts: new Date().toISOString(),
+    action,
+    userId: req.session?.userId || null,
+    username: req.session?.username || null,
+    ip:
+      req.headers["x-forwarded-for"]?.split(",")[0]?.trim() ||
+      req.socket?.remoteAddress ||
+      null,
+    method: req.method,
+    path: req.originalUrl,
+    details
+  };
+
+  console.log(JSON.stringify(entry));
+}
+
 
 // Session middleware
 /*
@@ -497,10 +516,18 @@ app.get(
         `attachment; filename="${filename}"`
       );
 
+      // Export report log
+      audit(req, "report.export_csv", {
+        reportId: req.params.id,
+        year: report.year,
+        month: report.month
+      });
+
       res.send(csv);
 
     } catch (err) {
       console.error("CSV EXPORT ERROR:", err);
+      audit(req, "report.export_csv_failed", { reportId: req.params.id, error: String(err?.message || err) });
       res.status(500).json({ error: "Failed to export CSV" });
     }
   }
@@ -587,6 +614,15 @@ app.post("/api/expenses", requireAuth, async (req, res) => {
       }
     });
 
+    // Expenses log
+    audit(req, "expense.create", {
+      amount: Number(amount),
+      category: expenseDoc.category,
+      date: expenseDoc.date.toISOString(),
+      vendor: expenseDoc.vendor || null,
+      hasAlerts: alerts.length > 0
+    });
+
     res.status(201).json({
       ok: true,
       alerts
@@ -594,6 +630,7 @@ app.post("/api/expenses", requireAuth, async (req, res) => {
 
   } catch (err) {
     console.error("Expense insert failed:", err);
+    audit(req, "expense.create_failed", { error: String(err?.message || err) });
     res.status(500).json({ error: "Failed to add expense" });
   } finally {
     await session.endSession();
@@ -648,9 +685,18 @@ app.delete("/api/expenses/:id", requireAuth, async (req, res) => {
       user_id: userId
     });
     
+    // Expense delete log
+    audit(req, "expense.delete", {
+      expenseId: id,
+      category: expense.category,
+      amount: Number(expense.amount?.toString?.() ?? expense.amount),
+      date: new Date(expense.date).toISOString()
+    });
+
     res.json({ ok: true });
   } catch (error) {
     console.error("Error deleting expense:", error);
+    audit(req, "expense.delete_failed", { expenseId: id, error: String(error?.message || error) });
     res.status(500).json({ error: "Failed to delete expense" });
   }
 });
@@ -788,6 +834,12 @@ app.post("/api/budgets", requireAuth, async (req, res) => {
     
     console.log("MongoDB update result:", result);
     
+    // Budget update log
+    audit(req, "budget.upsert", {
+      category: budget_category,
+      amount: Number(budget_amount)
+    });
+
     res.json({ 
       ok: true, 
       message: `Budget for ${budget_category} set to ${budget_amount}€`,
@@ -797,6 +849,10 @@ app.post("/api/budgets", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Error setting budget:", error);
     console.error("Error details:", error.message);
+    audit(req, "budget.upsert_failed", {
+      category: budget_category,
+      error: String(error?.message || error)
+    });
     res.status(500).json({ 
       error: "Failed to set budget",
       details: error.message 
@@ -829,6 +885,9 @@ app.delete("/api/budgets/:category", requireAuth, async (req, res) => {
       return res.status(404).json({ error: "Budget not found" });
     }
     
+    // Budget delete log
+    audit(req, "budget.delete", { category });
+
     res.json({ 
       ok: true, 
       message: `Budget for ${category} deleted` 
@@ -836,6 +895,7 @@ app.delete("/api/budgets/:category", requireAuth, async (req, res) => {
     
   } catch (error) {
     console.error("Error deleting budget:", error);
+    audit(req, "budget.delete_failed", { category, error: String(error?.message || error) });
     res.status(500).json({ error: "Failed to delete budget" });
   }
 });
