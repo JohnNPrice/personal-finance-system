@@ -4,7 +4,15 @@ const API = "/api";
 const form = document.getElementById("expenseForm");
 const list = document.getElementById("expensesList");
 
+// Real time notification stuff
 let socket;
+let toastContainer = document.getElementById("toast-container");
+
+if (!toastContainer) {
+  toastContainer = document.createElement("div");
+  toastContainer.id = "toast-container";
+  document.body.appendChild(toastContainer);
+}
 
 // Display all expenses
 async function loadExpenses() {
@@ -536,7 +544,7 @@ function showToast(alert) {
     ${alert.category}: ${alert.spent} / ${alert.limit}
   `;
 
-  document.body.appendChild(toast);
+  toastContainer.appendChild(toast);
 
   // show animation
   requestAnimationFrame(() => {
@@ -549,7 +557,8 @@ function showToast(alert) {
   };
 
   // auto-dismiss after 6s
-  setTimeout(() => {
+ /* setTimeout(() => {
     toast.remove();
   }, 6000);
+  */
 }

@@ -631,13 +631,18 @@ app.post("/api/expenses", requireAuth, async (req, res) => {
     });
 
     if (alerts.length > 0) {
-    const io = req.app.get("io");
+      const io = req.app.get("io");
 
-    io.to(`user:${req.session.userId}`).emit("budget_alert", {
-      alerts,
-      created_at: new Date()
-    });
-  }
+      alerts.forEach(a => {
+        io.to(`user:${req.session.userId}`).emit("budget_alert", {
+          category: a.category,
+          spent: a.spent,
+          limit: a.limit,
+          percentage: a.percentage
+        });
+      });
+    }
+
 
     res.status(201).json({
       ok: true,
@@ -983,30 +988,45 @@ io.use((socket, next) => {
 });
 
 
-// Make io available later (Phase 2)
+
 app.set("io", io);
 
-// Phase 1: connection visibility only
-io.on("connection", (socket) => {
+io.on("connection", async (socket) => {
   const session = socket.request.session;
+  if (!session?.userId) return socket.disconnect(true);
 
-  if (!session || !session.userId) {
-    console.log("WS unauthenticated connection:", socket.id);
-    socket.disconnect(true);
-    return;
+  const userId = new ObjectId(session.userId);
+  socket.join(`user:${session.userId}`);
+
+  try {
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const budgets = await budgetsCol.find({ user_id: userId }).toArray();
+
+    for (const budget of budgets) {
+      const cacheDoc = await budgetCacheCol.findOne({
+        user_id: userId,
+        month: monthKey,
+        category: budget.budget_category
+      });
+
+      const spent = cacheDoc?.total || 0;
+      const limit = Number(budget.budget_amount.toString());
+
+      if (spent > limit) {
+        io.to(`user:${session.userId}`).emit("budget_alert", {
+          category: budget.budget_category,
+          spent,
+          limit
+        });
+      }
+    }
+  } catch (err) {
+    console.error("WS login budget check failed:", err);
   }
-
-  const userId = session.userId;
-
-  console.log(`WS connected: ${socket.id} (user ${userId})`);
-
-  // Put user in their own room
-  socket.join(`user:${userId}`);
-
-  socket.on("disconnect", () => {
-    console.log(`WS disconnected: ${socket.id} (user ${userId})`);
-  });
 });
+
 
 
 connectMongo()
