@@ -1,3 +1,5 @@
+const http = require("http");
+const { Server } = require("socket.io");
 const express = require("express");
 const path = require("path");
 const { MongoClient, ObjectId, Decimal128 } = require("mongodb");
@@ -55,7 +57,7 @@ app.use(session({
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) throw new Error("MONGO_URI not set");
 
-app.use(session({
+const sessionMiddleware = session({
   store: MongoStore.default.create({
     mongoUrl: MONGO_URI,
     collectionName: "sessions"
@@ -63,12 +65,15 @@ app.use(session({
   secret: "finance-system-secret-key-2024",
   resave: false,
   saveUninitialized: false,
-    cookie: {
-    secure: false,
+  cookie: {
+    secure: false, // IMPORTANT: nginx note below
     httpOnly: true,
     maxAge: 1000 * 60 * 60 * 24
   }
-}));
+});
+
+app.use(sessionMiddleware);
+
 // END OF NEW SESSION CODE
 
 
@@ -80,6 +85,8 @@ const PORT = process.env.PORT || 3000;
 
 // Connect to Mongo
 let db, expensesCol, budgetsCol, usersCol, budgetCacheCol, reportsCol;
+
+
 
 async function connectMongo() {
   const client = new MongoClient(MONGO_URI);
@@ -623,6 +630,15 @@ app.post("/api/expenses", requireAuth, async (req, res) => {
       hasAlerts: alerts.length > 0
     });
 
+    if (alerts.length > 0) {
+    const io = req.app.get("io");
+
+    io.to(`user:${req.session.userId}`).emit("budget_alert", {
+      alerts,
+      created_at: new Date()
+    });
+  }
+
     res.status(201).json({
       ok: true,
       alerts
@@ -954,12 +970,57 @@ app.get("/api/budgets/summary", requireAuth, async (req, res) => {
 
 
 // Server start
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: true,
+    credentials: true
+  }
+});
+
+io.use((socket, next) => {
+  sessionMiddleware(socket.request, {}, next);
+});
+
+
+// Make io available later (Phase 2)
+app.set("io", io);
+
+// Phase 1: connection visibility only
+io.on("connection", (socket) => {
+  const session = socket.request.session;
+
+  if (!session || !session.userId) {
+    console.log("WS unauthenticated connection:", socket.id);
+    socket.disconnect(true);
+    return;
+  }
+
+  const userId = session.userId;
+
+  console.log(`WS connected: ${socket.id} (user ${userId})`);
+
+  // Put user in their own room
+  socket.join(`user:${userId}`);
+
+  socket.on("disconnect", () => {
+    console.log(`WS disconnected: ${socket.id} (user ${userId})`);
+  });
+});
+
+
 connectMongo()
-  .then(() => app.listen(PORT, () => console.log(`Backend running on http://localhost:${PORT}`)))
+  .then(() => {
+    server.listen(PORT, () => {
+      console.log(`Backend running on http://localhost:${PORT}`);
+      console.log("WebSocket server attached");
+    });
+  })
   .catch(err => {
     console.error("Mongo connection failed:", err);
     process.exit(1);
   });
+
 
 // Interval for reports
  /* setInterval(async () => {

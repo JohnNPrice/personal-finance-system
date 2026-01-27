@@ -326,3 +326,38 @@ button:active {
   background: #f8fafc;
   border-color: #94a3b8;
 }
+
+.toast {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  min-width: 260px;
+  background: #2c2c2c;
+  color: #fff;
+  padding: 14px 16px;
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+  font-size: 14px;
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast .close {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.7;
+}
+
+.toast .close:hover {
+  opacity: 1;
+}

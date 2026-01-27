@@ -4,6 +4,7 @@ const API = "/api";
 const form = document.getElementById("expenseForm");
 const list = document.getElementById("expensesList");
 
+let socket;
 
 // Display all expenses
 async function loadExpenses() {
@@ -453,6 +454,23 @@ if (cancelBudgetBtn) {
       window.location.href = '/login.html';
     });
   }
+
+  // Real-Time alert
+  socket = io({
+    withCredentials: true
+  });
+
+  socket.on("connect", () => {
+    console.log("Socket connected:", socket.id);
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Socket disconnected");
+  });
+
+  socket.on("budget_alert", alert => {
+    showToast(alert);
+  });
 });
 
 // Report button
@@ -505,4 +523,33 @@ if (exportLatestBtn) {
       exportLatestBtn.disabled = false;
     }
   });
+}
+
+// Real-time notification
+function showToast(alert) {
+  const toast = document.createElement("div");
+  toast.className = "toast";
+
+  toast.innerHTML = `
+    <div class="close">&times;</div>
+    <strong>⚠️ Budget Alert</strong><br>
+    ${alert.category}: ${alert.spent} / ${alert.limit}
+  `;
+
+  document.body.appendChild(toast);
+
+  // show animation
+  requestAnimationFrame(() => {
+    toast.classList.add("show");
+  });
+
+  // close button
+  toast.querySelector(".close").onclick = () => {
+    toast.remove();
+  };
+
+  // auto-dismiss after 6s
+  setTimeout(() => {
+    toast.remove();
+  }, 6000);
 }
