@@ -54,6 +54,8 @@ services:
     volumes:
       - mongo2_data:/data/db
       - mongo_keyfile:/etc/mongo-keyfile:ro
+    ports:
+      - "27020:27017"
     networks:
       - pis-net
 
@@ -73,6 +75,8 @@ services:
     volumes:
       - mongo3_data:/data/db
       - mongo_keyfile:/etc/mongo-keyfile:ro
+    ports:
+      - "27021:27017"
     networks:
       - pis-net
 

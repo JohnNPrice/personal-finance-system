@@ -464,9 +464,11 @@ if (cancelBudgetBtn) {
   }
 
   // Real-Time alert
-  socket = io({
-    withCredentials: true
-  });
+socket = io({
+  path: "/socket.io/",
+  withCredentials: true,
+  transports: ["websocket"]
+});
 
   socket.on("connect", () => {
     console.log("Socket connected:", socket.id);
