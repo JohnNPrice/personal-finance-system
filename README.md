@@ -29,9 +29,9 @@ STEP 5 (SET UP PRIMARY NODE FOR REPLICAS):
 rs.initiate({
   _id: "rs0",
   members: [
-    { _id: 0, host: "mongo1:27017" },
-    { _id: 1, host: "mongo2:27017" },
-    { _id: 2, host: "mongo3:27017" }
+    { _id: 0, host: "mongo1:27017",  priority: 2 },
+    { _id: 1, host: "mongo2:27017", priority: 1 },
+    { _id: 2, host: "mongo3:27017", priority: 1 }
   ]
 })
 ```
@@ -44,8 +44,11 @@ STEP 6 (CHECK PRIMARY NODE):
 STEP 7 (MAKE ADMIN USER):
 
 `docker exec -it mongo1 mongosh`
+
 `use admin`
+
 `db.createUser({user: "admin", pwd: "12345", roles: [{ role: "root", db: "admin" }]})`
+
 `exit`
 
 STEP 8 (RESTORE MONGO DUMP DATABASE):
