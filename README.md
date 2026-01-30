@@ -1,28 +1,28 @@
 # personal-finance-system
 A web application for documenting, categorizing, and analyzing personal expenses.
 
-## STEPS FOR PIS DOCKER INSTALLATION
+## Steps for pis docker installation
 
-STEP 0 (OPEN POWERSHELL IN PROJECT DIRECTORY)
+Step 0 (open powershell in project directory)
 
-STEP 1 (REMOVE ALL IMAGES AND VOLUMES):
+Step 1 (remove all images and volumes):
 
 `docker compose down -v`
 
-STEP 2 (START DOCKER COMPOSE FILE):
+Step 2 (start docker compose file):
 
 `docker compose up`     
 
-STEP 3 (OPEN NEW POWERSHELL):
+Step 3 (open new powershell):
 
 
-STEP 4 (CHECK IF CONTAINERS AND NETWORK IS WORKING):
+Step 4 (check if containers and network is working):
 
 `docker ps`
 `docker network ls`
 
 
-STEP 5 (SET UP PRIMARY NODE FOR REPLICAS):
+Step 5 (set up primary node for replicas):
 
 `docker exec -it mongo1 mongosh`
 ```
@@ -36,12 +36,12 @@ rs.initiate({
 })
 ```
 
-STEP 6 (CHECK PRIMARY NODE):
+Step 6 (check primary node):
 
 `rs.status()`
 `exit`
 
-STEP 7 (MAKE ADMIN USER):
+Step 7 (make admin user):
 
 `docker exec -it mongo1 mongosh`
 
@@ -51,44 +51,47 @@ STEP 7 (MAKE ADMIN USER):
 
 `exit`
 
-STEP 8 (RESTORE MONGO DUMP DATABASE):
+Step 8 (restore mongo dump database):
 
 `docker compose -f docker-compose-restore_dump.yml up`
 
-STEP 9 (SET UP LOGGING (OPEN NEW POWERSHELL)):
+Step 9 (set up logging (open new powershell)):
 
 `docker compose -f docker-compose-elk.yml up -d`
 
-STEP 10 (SET UP BACKEND):
+Step 10 (set up backend):
 
 `docker compose -f docker-compose-backend.yml up --build`
 
-STEP 11 (SET UP LOAD BALANCING (OPEN NEW POWERSHELL)):
+Step 11 (set up load balancing (open new powershell)):
 
 `docker compose -f docker-compose-backend.yml up --scale backend=3`
 
-STEP 12 (CHECK CONNECTION TO DATABASE):
+Step 12 (check connection to database):
 
 `mongodb://admin:12345@localhost:27019/?authSource=admin&replicaSet=rs0&directConnection=true`
 
-STEP 13 (CHECK LOGGING):
+Step 13 (check logging):
 
 http://localhost:5601/app/discover#/
 
-STEP 14 (TYPE THESE VALUES INTO THE FIELDS)
+Step 14 (type these values into the fields):
 
 Name: 
+
 logs-*
 
 Index pattern:
+
 logs-*
 
-Timestamp field
-@timestamp
+Timestamp field:
+
+@timestamp:
 
 CLICK "Save data view to Kibana"
 
-STEP 15 (CHECK BACKEND):
+Step 15 (check backend):
 
 http://localhost:8090
 
