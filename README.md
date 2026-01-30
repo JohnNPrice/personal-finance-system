@@ -67,7 +67,7 @@ Step 11 (set up load balancing (open new powershell)):
 
 `docker compose -f docker-compose-backend.yml up --scale backend=3`
 
-Step 12 (check connection to database):
+Step 12 (check connection to database): *if using MongoDB for VS Code extension
 
 `mongodb://admin:12345@localhost:27019/?authSource=admin&replicaSet=rs0&directConnection=true`
 
